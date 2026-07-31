@@ -178,6 +178,17 @@ func (c *Collector) socketCounterSnapshot() map[string][2]uint64 {
 	return result
 }
 
+func (c *Collector) ResetNetworkAccounting() error {
+	c.mu.Lock()
+	tracker := c.bpfTracker
+	c.networkFlows = nil
+	c.mu.Unlock()
+	if tracker == nil {
+		return nil
+	}
+	return tracker.Reset()
+}
+
 func (c *Collector) refreshSystemd() {
 	ctx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
 	defer cancel()

@@ -73,6 +73,8 @@ make upgrade
 Retention defaults to ten days and is configurable from **Settings → Network
 history**. The same panel reports database usage and provides a typed-confirmation
 clear action. Any non-zero dropped-byte value is shown as a data-integrity error.
+Clearing network history also resets the live eBPF flow maps and dropped-byte
+integrity counter; the next sample starts a new accounting epoch.
 
 ## CPU, memory and disk-I/O history
 

@@ -51,7 +51,8 @@ ortalama/tepe CPU ve yerleşik bellek ile disk okuma-yazma deltalarını döndü
 `GET /settings/network` saklama ve depolama bilgisini verir.
 `PATCH /settings/network`, 1–365 arası `{"retention_days":10}` kabul eder.
 `DELETE /settings/network` için `{"confirm":"DELETE NETWORK HISTORY"}` gerekir
-ve kayıtlı akış geçmişini kalıcı olarak temizler. Değişiklik çağrıları CSRF ile
+ve kayıtlı akış geçmişiyle canlı eBPF akış/bütünlük sayaçlarını kalıcı olarak
+temizler. Değişiklik çağrıları CSRF ile
 korunur ve denetim kaydına yazılır.
 Toplayıcı anahtarları `network_enabled`, `cpu_enabled`, `memory_enabled` ve
 `disk_io_enabled` alanlarıdır. `DELETE /settings/resources` tam olarak

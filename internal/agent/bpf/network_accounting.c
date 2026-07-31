@@ -112,7 +112,11 @@ static __always_inline int account_return(struct pt_regs *ctx)
 		return 0;
 	}
 	if ((__u64)transferred > call->requested_bytes) {
-		record_drop(transferred);
+		/*
+		 * A return larger than the requested buffer is an invalid probe sample,
+		 * not a flow-map capacity failure. Discard it instead of presenting an
+		 * untrusted ABI/signature value as lost network traffic.
+		 */
 		bpf_map_delete_elem(&calls, &id);
 		return 0;
 	}

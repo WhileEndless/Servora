@@ -56,7 +56,8 @@ It returns average/peak CPU and resident memory plus disk read/write deltas.
 `PATCH /settings/network` accepts `{"retention_days":10}` (1–365).
 `DELETE /settings/network` requires
 `{"confirm":"DELETE NETWORK HISTORY"}` and permanently clears stored flow
-history. Mutating calls require CSRF protection and are audited.
+history together with live eBPF flow and integrity counters. Mutating calls
+require CSRF protection and are audited.
 Collector booleans are `network_enabled`, `cpu_enabled`, `memory_enabled` and
 `disk_io_enabled`. `DELETE /settings/resources` requires the exact phrase
 `DELETE RESOURCE HISTORY`.

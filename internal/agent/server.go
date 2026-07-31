@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"net/http"
@@ -49,6 +50,7 @@ func New(socket string, cfg app.Config) *Server {
 	mux.HandleFunc("/v1/packages/scan", s.packages)
 	mux.HandleFunc("/v1/packages/files/", s.packageFiles)
 	mux.HandleFunc("/v1/docker/images", s.dockerImages)
+	mux.HandleFunc("/v1/network/reset", s.resetNetworkAccounting)
 	mux.HandleFunc("/v1/action", s.action)
 	mux.HandleFunc("/v1/auth", s.authenticate)
 	mux.HandleFunc("/v1/health", func(w http.ResponseWriter, _ *http.Request) {
@@ -62,6 +64,18 @@ func New(socket string, cfg app.Config) *Server {
 		MaxHeaderBytes:    16 << 10,
 	}
 	return s
+}
+
+func (s *Server) resetNetworkAccounting(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := s.collector.ResetNetworkAccounting(); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
 func (s *Server) packages(w http.ResponseWriter, r *http.Request) {
@@ -286,7 +300,13 @@ func (s *Server) action(w http.ResponseWriter, r *http.Request) {
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, 32<<10)
 	var req model.ActionRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, model.ActionResponse{Message: "invalid request"})
+		return
+	}
+	if err := decoder.Decode(&struct{}{}); err != io.EOF {
 		writeJSON(w, http.StatusBadRequest, model.ActionResponse{Message: "invalid request"})
 		return
 	}

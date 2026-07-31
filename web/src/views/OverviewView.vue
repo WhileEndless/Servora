@@ -7,7 +7,7 @@ import { monitorStore } from "@/services/MonitorStore";
 import { useI18n } from "@/composables/useI18n";
 
 defineOptions({ name: "OverviewView" });
-const { t, locale } = useI18n();
+const { t, locale, l } = useI18n();
 const snapshot = monitorStore.snapshot;
 const memoryPercent = computed(() => percent(snapshot.value.memory.Used, snapshot.value.memory.Total));
 const swapPercent = computed(() => percent(snapshot.value.memory.SwapUsed, snapshot.value.memory.SwapTotal));
@@ -20,10 +20,10 @@ const networkRate = computed(() => snapshot.value.network.reduce((total, row) =>
 const healthItems = computed(() => {
   const age = snapshot.value.timestamp ? (Date.now() - new Date(snapshot.value.timestamp).getTime()) / 1000 : Infinity;
   return [
-    { name: "Live event stream", detail: "1 second updates", ok: monitorStore.streamConnected.value },
-    { name: "Privileged collector", detail: age < 3 ? `${age.toFixed(1)}s ago` : "stale", ok: age < 3 },
-    { name: "Historical metrics", detail: `${monitorStore.history.value.length} points loaded`, ok: monitorStore.history.value.length > 0 },
-    { name: "systemd inventory", detail: "15 second cache", ok: snapshot.value.capabilities.systemd === true },
+    { name: l("Live event stream", "Canlı olay akışı"), detail: l("1 second updates", "1 saniyelik güncellemeler"), ok: monitorStore.streamConnected.value },
+    { name: l("Privileged collector", "Yetkili toplayıcı"), detail: age < 3 ? l("{age}s ago", "{age} sn önce", { age: age.toFixed(1) }) : l("stale", "güncel değil"), ok: age < 3 },
+    { name: l("Historical metrics", "Geçmiş metrikleri"), detail: l("{count} points loaded", "{count} nokta yüklendi", { count: monitorStore.history.value.length }), ok: monitorStore.history.value.length > 0 },
+    { name: "systemd inventory", detail: l("15 second cache", "15 saniyelik önbellek"), ok: snapshot.value.capabilities.systemd === true },
   ];
 });
 
@@ -62,7 +62,7 @@ function duration(seconds: number): string {
       </div>
     </div>
     <div class="metric-grid">
-      <ResourceGauge label="CPU" :value="snapshot.cpu.usage" :detail="`${snapshot.cpu.cores} cores · ${snapshot.cpu.load[0]?.toFixed(2) ?? 0} load`" color="#39d6c5" />
+      <ResourceGauge label="CPU" :value="snapshot.cpu.usage" :detail="l('{cores} cores · {load} load', '{cores} çekirdek · {load} yük', { cores: snapshot.cpu.cores, load: snapshot.cpu.load[0]?.toFixed(2) ?? 0 })" color="#39d6c5" />
       <ResourceGauge label="RAM" :value="memoryPercent" :detail="`${bytes(snapshot.memory.Used)} / ${bytes(snapshot.memory.Total)}`" color="#5d8cff" />
       <ResourceGauge label="SWAP" :value="swapPercent" :detail="`${bytes(snapshot.memory.SwapUsed)} / ${bytes(snapshot.memory.SwapTotal)}`" color="#f5b942" />
       <DiskUsageCard
@@ -80,9 +80,9 @@ function duration(seconds: number): string {
         <div class="panel-title"><div><span>{{ t("performance") }}</span><small>CPU & MEMORY</small></div><div class="legend"><i class="cpu" />CPU <i class="memory" />RAM</div></div>
         <HistoryChart :points="monitorStore.history.value" />
       </article>
-      <article class="panel"><div class="panel-title"><span>Network flow</span><small>LIVE</small></div><div class="big-stat">{{ bytes(networkRate) }}/s</div><div class="health-list"><div v-for="item in snapshot.network" :key="text(item, 'Name')" class="health-item"><span>{{ text(item, "Name") }}</span><small>↓ {{ bytes(number(item, "RXRate")) }}/s · ↑ {{ bytes(number(item, "TXRate")) }}/s</small></div></div></article>
-      <article class="panel span2"><div class="panel-title"><span>{{ t("topProcesses") }}</span><button class="link" @click="monitorStore.setPage('processes')">View all →</button></div><div class="table-wrap"><table><thead><tr><th>PID</th><th>NAME</th><th>USER</th><th>CPU</th><th>RAM</th></tr></thead><tbody><tr v-for="process in topProcesses" :key="process.PID"><td>{{ process.PID }}</td><td>{{ process.Name }}</td><td>{{ process.User }}</td><td>{{ process.CPU.toFixed(1) }}%</td><td>{{ bytes(process.Memory) }}</td></tr></tbody></table></div></article>
-      <article class="panel"><div class="panel-title"><span>{{ t("systemHealth") }}</span><span class="live-label"><i />LIVE</span></div><div class="health-list"><div v-for="item in healthItems" :key="item.name" class="health-item"><div><span>{{ item.name }}</span><small>{{ item.detail }}</small></div><span class="badge" :class="item.ok ? 'good' : 'bad'">{{ item.ok ? "HEALTHY" : "CHECK" }}</span></div></div></article>
+      <article class="panel"><div class="panel-title"><span>{{ l("Network flow", "Ağ akışı") }}</span><small>{{ l("LIVE", "CANLI") }}</small></div><div class="big-stat">{{ bytes(networkRate) }}/s</div><div class="health-list"><div v-for="item in snapshot.network" :key="text(item, 'Name')" class="health-item"><span>{{ text(item, "Name") }}</span><small>↓ {{ bytes(number(item, "RXRate")) }}/s · ↑ {{ bytes(number(item, "TXRate")) }}/s</small></div></div></article>
+      <article class="panel span2"><div class="panel-title"><span>{{ t("topProcesses") }}</span><button class="link" @click="monitorStore.setPage('processes')">{{ l("View all", "Tümünü görüntüle") }} →</button></div><div class="table-wrap"><table><thead><tr><th>PID</th><th>{{ l("NAME", "AD") }}</th><th>{{ l("USER", "KULLANICI") }}</th><th>CPU</th><th>RAM</th></tr></thead><tbody><tr v-for="process in topProcesses" :key="process.PID"><td>{{ process.PID }}</td><td>{{ process.Name }}</td><td>{{ process.User }}</td><td>{{ process.CPU.toFixed(1) }}%</td><td>{{ bytes(process.Memory) }}</td></tr></tbody></table></div></article>
+      <article class="panel"><div class="panel-title"><span>{{ t("systemHealth") }}</span><span class="live-label"><i />{{ l("LIVE", "CANLI") }}</span></div><div class="health-list"><div v-for="item in healthItems" :key="item.name" class="health-item"><div><span>{{ item.name }}</span><small>{{ item.detail }}</small></div><span class="badge" :class="item.ok ? 'good' : 'bad'">{{ item.ok ? l("HEALTHY", "SAĞLIKLI") : l("CHECK", "KONTROL ET") }}</span></div></div></article>
     </div>
   </section>
 </template>

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useI18n } from "@/composables/useI18n";
 defineProps<{
   title: string;
   message: string;
@@ -6,6 +7,7 @@ defineProps<{
   dangerous?: boolean;
 }>();
 const emit = defineEmits<{ confirm: []; cancel: [] }>();
+const { l } = useI18n();
 </script>
 
 <template>
@@ -17,9 +19,9 @@ const emit = defineEmits<{ confirm: []; cancel: [] }>();
         <p>{{ message }}</p>
       </div>
       <div class="modal-actions">
-        <button class="secondary" @click="emit('cancel')">Cancel</button>
+        <button class="secondary" @click="emit('cancel')">{{ l("Cancel", "İptal") }}</button>
         <button :class="dangerous ? 'danger' : 'primary'" @click="emit('confirm')">
-          {{ confirmLabel ?? "Confirm" }}
+          {{ confirmLabel ?? l("Confirm", "Onayla") }}
         </button>
       </div>
     </section>

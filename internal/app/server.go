@@ -150,6 +150,9 @@ func (s *Server) routes(mux *http.ServeMux) {
 	mux.Handle("/api/v1/actions", s.requireAuth(http.HandlerFunc(s.actions)))
 	mux.Handle("/api/v1/stream", s.requireAuth(http.HandlerFunc(s.stream)))
 	mux.Handle("/api/v1/modules", s.requireAuth(http.HandlerFunc(s.modules)))
+	// Keep every API path behind authentication by default. Public endpoints
+	// above are more specific and therefore still win ServeMux routing.
+	mux.Handle("/api/", s.requireAuth(http.NotFoundHandler()))
 	root, _ := fs.Sub(staticFiles, "static")
 	mux.Handle("/", spaHandler(http.FS(root)))
 }
@@ -185,6 +188,9 @@ func (s *Server) security(next http.Handler) http.Handler {
 		w.Header().Set("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
 		w.Header().Set("Content-Security-Policy", "default-src 'self'; style-src 'self'; script-src 'self'; connect-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'")
 		w.Header().Set("Strict-Transport-Security", "max-age=31536000")
+		if strings.HasPrefix(r.URL.Path, "/api/") {
+			w.Header().Set("Cache-Control", "no-store")
+		}
 		ip := peerIP(r)
 		if !containsIP(s.cfg.AllowedCIDRs, net.ParseIP(ip)) {
 			http.Error(w, "network not allowed", http.StatusForbidden)
@@ -229,8 +235,13 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, 8<<10)
-	var input struct{ Username, Password string }
-	if json.NewDecoder(r.Body).Decode(&input) != nil {
+	var input struct {
+		Username string `json:"username"`
+		Password string `json:"password"`
+	}
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	if decoder.Decode(&input) != nil || decoder.Decode(&struct{}{}) != io.EOF {
 		writeError(w, http.StatusBadRequest, "invalid_request", "Invalid request")
 		return
 	}
@@ -283,16 +294,17 @@ func (s *Server) session(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"username": ss.User, "csrf": ss.CSRF, "version": s.version, "role": "admin"})
 }
 
-func (s *Server) health(w http.ResponseWriter, _ *http.Request) {
+func (s *Server) health(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		methodNotAllowed(w)
+		return
+	}
 	err := s.store.Ping()
-	s.mu.RLock()
-	last := s.snapshot.Timestamp
-	s.mu.RUnlock()
 	status := http.StatusOK
 	if err != nil {
 		status = http.StatusServiceUnavailable
 	}
-	writeJSON(w, status, map[string]any{"ok": err == nil, "version": s.version, "last_sample": last})
+	writeJSON(w, status, map[string]any{"ok": err == nil})
 }
 
 func (s *Server) overview(w http.ResponseWriter, r *http.Request) {
@@ -532,6 +544,10 @@ func (s *Server) networkSettings(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadRequest, "confirmation_required", "Exact confirmation phrase is required")
 			return
 		}
+		if err := s.resetAgentNetworkAccounting(r.Context()); err != nil {
+			writeError(w, http.StatusBadGateway, "accounting_reset_failed", "Could not reset live network accounting")
+			return
+		}
 		if err := s.store.ClearNetworkFlows(); err != nil {
 			writeError(w, http.StatusInternalServerError, "cleanup_failed", "Could not clear network history")
 			return
@@ -541,6 +557,20 @@ func (s *Server) networkSettings(w http.ResponseWriter, r *http.Request) {
 	default:
 		methodNotAllowed(w)
 	}
+}
+
+func (s *Server) resetAgentNetworkAccounting(ctx context.Context) error {
+	request, _ := http.NewRequestWithContext(ctx, http.MethodPost, "http://agent/v1/network/reset", nil)
+	response, err := s.agent.Do(request)
+	if err != nil {
+		return err
+	}
+	defer response.Body.Close()
+	if response.StatusCode/100 != 2 {
+		_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, 1024))
+		return fmt.Errorf("agent returned %s", response.Status)
+	}
+	return nil
 }
 
 func (s *Server) resourceSettings(w http.ResponseWriter, r *http.Request) {
@@ -741,16 +771,14 @@ func (s *Server) notificationTargets(w http.ResponseWriter, r *http.Request) {
 		if !decodeJSON(w, r, &in, 16<<10) {
 			return
 		}
-		if in.ID == "" {
-			in.ID = randomID(12)
-		}
+		// IDs and secret references are server-owned so a caller cannot replace
+		// another destination or overwrite an existing secret.
+		in.ID = randomID(12)
 		if in.Provider == "" {
 			in.Provider = "telegram"
 		}
-		if in.SecretRef == "" {
-			in.SecretRef = randomID(12)
-		}
-		if in.Name == "" || in.Provider != "telegram" || in.ChatID == "" || in.Token == "" {
+		in.SecretRef = randomID(12)
+		if !validNotificationTarget(in.Name, in.Provider, in.ChatID, in.Token) {
 			writeError(w, 400, "invalid_target", "Name, chat ID and bot token are required")
 			return
 		}
@@ -760,6 +788,9 @@ func (s *Server) notificationTargets(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		err := s.store.PutNotificationTarget(in.NotificationTarget)
+		if err != nil {
+			_, _ = s.agentAction(r.Context(), model.ActionRequest{Action: "secret.delete", Target: in.SecretRef})
+		}
 		s.auditResult(r, "notification_target.save", in.ID, map[string]string{"provider": "telegram", "chat_id": in.ChatID}, err)
 		if err != nil {
 			writeError(w, 500, "database_error", err.Error())
@@ -1142,12 +1173,13 @@ func (s *Server) sendToTarget(ctx context.Context, id, message string) error {
 	client := &http.Client{Timeout: 12 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
-		return err
+		// net/http errors may embed req.URL, whose path contains the bot token.
+		return errors.New("telegram request failed")
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode/100 != 2 {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
-		return fmt.Errorf("telegram returned %s: %s", resp.Status, strings.TrimSpace(string(body)))
+		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1024))
+		return fmt.Errorf("telegram returned %s", resp.Status)
 	}
 	return nil
 }
@@ -1218,6 +1250,10 @@ func decodeJSON(w http.ResponseWriter, r *http.Request, dst any, max int64) bool
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(dst); err != nil {
 		writeError(w, 400, "invalid_json", err.Error())
+		return false
+	}
+	if err := dec.Decode(&struct{}{}); err != io.EOF {
+		writeError(w, 400, "invalid_json", "Request body must contain exactly one JSON value")
 		return false
 	}
 	return true
@@ -1328,6 +1364,14 @@ func compare(value float64, op string, threshold float64) bool {
 }
 func validAlertRule(r store.AlertRule) bool {
 	return r.Name != "" && (r.Source == "cpu" || r.Source == "memory" || r.Source == "swap" || r.Source == "load" || r.Source == "disk" || r.Source == "processes" || r.Source == "containers" || r.Source == "network_total_1h" || r.Source == "network_total_24h" || r.Source == "network_rx_24h" || r.Source == "network_tx_24h") && (r.Operator == ">" || r.Operator == ">=" || r.Operator == "<" || r.Operator == "<=" || r.Operator == "==") && r.Threshold >= 0 && r.ForSeconds >= 0 && r.CooldownSeconds >= 0
+}
+
+var telegramChatIDPattern = regexp.MustCompile(`^-?[0-9]{1,20}$`)
+var telegramTokenPattern = regexp.MustCompile(`^[0-9]{5,20}:[A-Za-z0-9_-]{20,128}$`)
+
+func validNotificationTarget(name, provider, chatID, token string) bool {
+	return strings.TrimSpace(name) != "" && len(name) <= 128 && provider == "telegram" &&
+		telegramChatIDPattern.MatchString(chatID) && telegramTokenPattern.MatchString(token)
 }
 func redactParams(params map[string]string) map[string]string {
 	out := map[string]string{}
