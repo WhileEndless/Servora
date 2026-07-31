@@ -10,6 +10,11 @@ birkaçını seçin.
 
 ## Zamanlanmış işler
 
+`system-maintenance.service`, `Type=oneshot` birimidir. Bakım tamamlanınca servis
+çıktığı ve `system-maintenance.timer` sonraki çalışmayı beklediği için iki çalışma
+arasında `inactive (dead)` görünmesi normaldir. Servisler ekranı bu durumu
+hazır/timer bekleniyor olarak gösterir ve **şimdi çalıştır** eylemini sunar.
+
 Tam executable yolunu `JOB_EXECUTABLES` ayarına ekleyip agent'ı yeniden başlatın.
 Arayüz systemd `OnCalendar` ifadelerini kabul eder. Oluşturulan unit'ler
 `system-maintenance-job-` öneklidir, aynı anda ikinci kez başlamaz ve bir saat

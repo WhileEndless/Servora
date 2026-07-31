@@ -2,9 +2,11 @@ package app
 
 import (
 	"net"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -114,6 +116,46 @@ func TestAllAPIRoutesRequireAuthenticationByDefault(t *testing.T) {
 		if got := response.Header().Get("Cache-Control"); got != "no-store" {
 			t.Errorf("%s Cache-Control = %q, want no-store", path, got)
 		}
+	}
+}
+
+func TestStreamClosesWhenSessionIsDeleted(t *testing.T) {
+	previousInterval := streamSessionCheckInterval
+	streamSessionCheckInterval = 10 * time.Millisecond
+	t.Cleanup(func() { streamSessionCheckInterval = previousInterval })
+
+	cfg := DefaultConfig()
+	cfg.DataDir = t.TempDir()
+	_, allowed, _ := net.ParseCIDR("192.0.2.0/24")
+	cfg.AllowedCIDRs = []*net.IPNet{allowed}
+	server, err := NewServer(cfg, "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = server.Close() })
+	if err := server.store.CreateSession("stream-token", "alice", "csrf", "192.0.2.10", time.Now()); err != nil {
+		t.Fatal(err)
+	}
+
+	request := httptest.NewRequest(http.MethodGet, "https://monitor.example/api/v1/stream", nil)
+	request.RemoteAddr = "192.0.2.10:12345"
+	request.AddCookie(&http.Cookie{Name: "sms_session", Value: "stream-token"})
+	response := httptest.NewRecorder()
+	done := make(chan struct{})
+	go func() {
+		server.http.Handler.ServeHTTP(response, request)
+		close(done)
+	}()
+	time.Sleep(20 * time.Millisecond)
+	server.store.DeleteSession("stream-token")
+
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("stream remained open after its session was deleted")
+	}
+	if !strings.Contains(response.Body.String(), "event: auth-expired") {
+		t.Fatalf("stream did not announce session expiry: %s", response.Body.String())
 	}
 }
 

@@ -81,9 +81,20 @@ export class MonitorStore {
         this.streamConnectedState.value = true;
         this.applySnapshot(value);
       },
-      (connected) => { this.streamConnectedState.value = connected; },
-    );
-  }
+		(connected) => { this.streamConnectedState.value = connected; },
+		() => { this.expireSession(); },
+	);
+	}
+
+	private expireSession(): void {
+		this.eventSource?.close();
+		this.eventSource = undefined;
+		this.streamConnectedState.value = false;
+		this.sessionState.value = null;
+		this.snapshotState.value = emptySnapshot();
+		this.historyState.value = [];
+		apiClient.setCsrfToken("");
+	}
 
   private applySnapshot(value: Snapshot): void {
     // Go encodes nil slices/maps as null. Normalize them at the boundary so a

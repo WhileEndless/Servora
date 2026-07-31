@@ -41,8 +41,9 @@ export interface ProcessDetail {
 }
 
 export interface ServiceInfo {
-  Name: string; Load: string; Active: string; Sub: string; Description: string;
-  UnitFile: string; ActiveSince: string; Duration: string; PID: number;
+	Name: string; Load: string; Active: string; Sub: string; Description: string;
+	UnitFile: string; ActiveSince: string; Duration: string; Type: string;
+	TriggeredBy: string; Result: string; PID: number;
   Restarts: number; Memory: number; Manageable: boolean; Protected: boolean;
 }
 

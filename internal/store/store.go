@@ -922,6 +922,23 @@ func (s *Store) CreateSession(rawToken, username, csrf, ip string, now time.Time
 }
 
 func (s *Store) Session(rawToken string, idle, absolute time.Duration, now time.Time) (Session, error) {
+	out, err := s.session(rawToken, idle, absolute, now)
+	if err != nil {
+		return Session{}, err
+	}
+	_, _ = s.db.Exec("UPDATE sessions SET seen_at=? WHERE token_hash=?", now.Unix(), hash(rawToken))
+	out.Seen = now
+	return out, nil
+}
+
+// SessionActive validates an existing session without extending its idle
+// lifetime. Long-lived streams use it so passive telemetry cannot keep a
+// browser session alive forever.
+func (s *Store) SessionActive(rawToken string, idle, absolute time.Duration, now time.Time) (Session, error) {
+	return s.session(rawToken, idle, absolute, now)
+}
+
+func (s *Store) session(rawToken string, idle, absolute time.Duration, now time.Time) (Session, error) {
 	var out Session
 	var created, seen int64
 	err := s.db.QueryRow("SELECT username,csrf,ip,created_at,seen_at FROM sessions WHERE token_hash=?", hash(rawToken)).
@@ -934,7 +951,6 @@ func (s *Store) Session(rawToken string, idle, absolute time.Duration, now time.
 		_, _ = s.db.Exec("DELETE FROM sessions WHERE token_hash=?", hash(rawToken))
 		return Session{}, errors.New("session expired")
 	}
-	_, _ = s.db.Exec("UPDATE sessions SET seen_at=? WHERE token_hash=?", now.Unix(), hash(rawToken))
 	return out, nil
 }
 

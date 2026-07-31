@@ -535,7 +535,7 @@ func readServices(ctx context.Context) []model.Service {
 		services = append(services, s)
 	}
 	details, _ := command(ctx, "systemctl", "show", "--type=service", "--all",
-		"--property=Id,MainPID,NRestarts,MemoryCurrent,UnitFileState,ActiveEnterTimestampMonotonic")
+		"--property=Id,MainPID,NRestarts,MemoryCurrent,UnitFileState,ActiveEnterTimestampMonotonic,Type,TriggeredBy,Result")
 	byName := map[string]*model.Service{}
 	for index := range services {
 		byName[services[index].Name] = &services[index]
@@ -550,6 +550,9 @@ func readServices(ctx context.Context) []model.Service {
 		item.Restarts, _ = strconv.Atoi(values["NRestarts"])
 		item.Memory, _ = strconv.ParseUint(values["MemoryCurrent"], 10, 64)
 		item.UnitFile = values["UnitFileState"]
+		item.Type = values["Type"]
+		item.TriggeredBy = values["TriggeredBy"]
+		item.Result = values["Result"]
 		activeUS, _ := strconv.ParseInt(values["ActiveEnterTimestampMonotonic"], 10, 64)
 		if activeUS > 0 {
 			activeAt := detectBootTime().Add(time.Duration(activeUS) * time.Microsecond)

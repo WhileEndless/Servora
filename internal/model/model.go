@@ -49,11 +49,11 @@ type ProcessDetail struct {
 }
 
 type Service struct {
-	Name, Load, Active, Sub, Description, UnitFile string
-	ActiveSince, Duration                          string
-	PID, Restarts                                  int
-	Memory                                         uint64
-	Manageable, Protected                          bool
+	Name, Load, Active, Sub, Description, UnitFile   string
+	ActiveSince, Duration, Type, TriggeredBy, Result string
+	PID, Restarts                                    int
+	Memory                                           uint64
+	Manageable, Protected                            bool
 }
 
 type SSHSession struct {

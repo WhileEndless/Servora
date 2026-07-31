@@ -33,6 +33,20 @@ func TestSessionLifecycle(t *testing.T) {
 	}
 }
 
+func TestSessionActiveDoesNotExtendIdleLifetime(t *testing.T) {
+	db := newTestStore(t)
+	now := time.Now().UTC().Truncate(time.Second)
+	if err := db.CreateSession("stream-token", "alice", "csrf", "127.0.0.1", now); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.SessionActive("stream-token", time.Minute, time.Hour, now.Add(30*time.Second)); err != nil {
+		t.Fatalf("active stream session rejected early: %v", err)
+	}
+	if _, err := db.SessionActive("stream-token", time.Minute, time.Hour, now.Add(61*time.Second)); err == nil {
+		t.Fatal("passive stream validation extended the idle lifetime")
+	}
+}
+
 func TestLoginBan(t *testing.T) {
 	db := newTestStore(t)
 	now := time.Now()

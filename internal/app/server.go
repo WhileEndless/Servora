@@ -55,6 +55,8 @@ type contextKey string
 
 const sessionKey contextKey = "session"
 
+var streamSessionCheckInterval = 5 * time.Second
+
 func NewServer(cfg Config, version string) (*Server, error) {
 	db, err := store.Open(cfg.DatabasePath())
 	if err != nil {
@@ -925,6 +927,12 @@ func (s *Server) stream(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 500, "stream_unsupported", "Streaming unavailable")
 		return
 	}
+	cookie, err := r.Cookie("sms_session")
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "authentication_required", "Authentication required")
+		return
+	}
+	peer := peerIP(r)
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("X-Accel-Buffering", "no")
@@ -941,6 +949,8 @@ func (s *Server) stream(w http.ResponseWriter, r *http.Request) {
 	flusher.Flush()
 	tick := time.NewTicker(20 * time.Second)
 	defer tick.Stop()
+	authTick := time.NewTicker(streamSessionCheckInterval)
+	defer authTick.Stop()
 	for {
 		select {
 		case data := <-ch:
@@ -951,6 +961,14 @@ func (s *Server) stream(w http.ResponseWriter, r *http.Request) {
 			_ = controller.SetWriteDeadline(time.Now().Add(30 * time.Second))
 			fmt.Fprint(w, ": keepalive\n\n")
 			flusher.Flush()
+		case <-authTick.C:
+			session, err := s.store.SessionActive(cookie.Value, s.cfg.SessionIdle, s.cfg.SessionAbsolute, time.Now())
+			if err != nil || session.IP != peer {
+				_ = controller.SetWriteDeadline(time.Now().Add(5 * time.Second))
+				fmt.Fprint(w, "event: auth-expired\ndata: {}\n\n")
+				flusher.Flush()
+				return
+			}
 		case <-r.Context().Done():
 			return
 		}

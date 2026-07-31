@@ -13,14 +13,15 @@ describe("ApiError", () => {
 });
 
 describe("ApiClient stream", () => {
-  it("does not report a disconnect when snapshot processing throws", () => {
-    let snapshotListener: EventListener | undefined;
-    class EventSourceStub {
+	it("does not report a disconnect when snapshot processing throws", () => {
+		const listeners = new Map<string, EventListener>();
+		class EventSourceStub {
       public onopen: ((event: Event) => void) | null = null;
       public onerror: ((event: Event) => void) | null = null;
-      public addEventListener(_type: string, listener: EventListener): void {
-        snapshotListener = listener;
-      }
+		public addEventListener(type: string, listener: EventListener): void {
+			listeners.set(type, listener);
+		}
+		public close(): void {}
     }
     vi.stubGlobal("EventSource", EventSourceStub);
     const states: boolean[] = [];
@@ -29,9 +30,28 @@ describe("ApiClient stream", () => {
       (connected) => states.push(connected),
     );
 
-    expect(() => snapshotListener?.({ data: "{}" } as MessageEvent<string>)).toThrow("consumer failed");
-    expect(states).toEqual([true]);
-  });
+		expect(() => listeners.get("snapshot")?.({ data: "{}" } as MessageEvent<string>)).toThrow("consumer failed");
+		expect(states).toEqual([true]);
+	});
+
+	it("closes and reports an expired authenticated stream", () => {
+		const listeners = new Map<string, EventListener>();
+		const close = vi.fn();
+		class EventSourceStub {
+			public onopen: ((event: Event) => void) | null = null;
+			public onerror: ((event: Event) => void) | null = null;
+			public addEventListener(type: string, listener: EventListener): void { listeners.set(type, listener); }
+			public close(): void { close(); }
+		}
+		vi.stubGlobal("EventSource", EventSourceStub);
+		const expired = vi.fn();
+		const states: boolean[] = [];
+		new ApiClient().stream(() => {}, (state) => states.push(state), expired);
+		listeners.get("auth-expired")?.(new MessageEvent("auth-expired"));
+		expect(close).toHaveBeenCalledOnce();
+		expect(states).toEqual([false]);
+		expect(expired).toHaveBeenCalledOnce();
+	});
 });
 
 describe("ApiClient Docker images", () => {

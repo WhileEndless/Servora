@@ -193,10 +193,11 @@ export class ApiClient {
     return this.request(path, { method: "DELETE" });
   }
 
-  public stream(
-    onSnapshot: (snapshot: Snapshot) => void,
-    onState?: (connected: boolean) => void,
-  ): EventSource {
+	public stream(
+		onSnapshot: (snapshot: Snapshot) => void,
+		onState?: (connected: boolean) => void,
+		onAuthExpired?: () => void,
+	): EventSource {
     const source = new EventSource("/api/v1/stream");
     let disconnectTimer: number | undefined;
     const connected = (): void => {
@@ -211,7 +212,7 @@ export class ApiClient {
       // while fresh snapshots are still arriving.
       disconnectTimer = window.setTimeout(() => onState?.(false), 4_000);
     };
-    source.addEventListener("snapshot", (event) => {
+	source.addEventListener("snapshot", (event) => {
       let snapshot: Snapshot;
       try {
         snapshot = JSON.parse((event as MessageEvent<string>).data) as Snapshot;
@@ -221,8 +222,15 @@ export class ApiClient {
         return;
       }
       connected();
-      onSnapshot(snapshot);
-    });
+		onSnapshot(snapshot);
+	});
+	source.addEventListener("auth-expired", () => {
+		source.close();
+		if (disconnectTimer !== undefined) window.clearTimeout(disconnectTimer);
+		disconnectTimer = undefined;
+		onState?.(false);
+		onAuthExpired?.();
+	});
     return source;
   }
 

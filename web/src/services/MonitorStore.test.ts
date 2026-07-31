@@ -20,7 +20,7 @@ describe("MonitorStore session restoration", () => {
     expect(store.session.value?.username).toBe("alice");
   });
 
-  it("keeps the stream live when Go sends null for empty collections", async () => {
+	it("keeps the stream live when Go sends null for empty collections", async () => {
     vi.spyOn(apiClient, "session").mockResolvedValue(session);
     vi.spyOn(apiClient, "overview").mockRejectedValue(new Error("collector unavailable"));
     vi.spyOn(apiClient, "history").mockResolvedValue([]);
@@ -51,5 +51,25 @@ describe("MonitorStore session restoration", () => {
     expect(store.streamConnected.value).toBe(true);
     expect(store.snapshot.value.containers).toEqual([]);
     expect(store.snapshot.value.connections).toEqual([]);
-  });
+	});
+
+	it("clears protected telemetry when the stream session expires", async () => {
+		vi.spyOn(apiClient, "session").mockResolvedValue(session);
+		vi.spyOn(apiClient, "overview").mockRejectedValue(new Error("collector unavailable"));
+		vi.spyOn(apiClient, "history").mockResolvedValue([]);
+		let expire: (() => void) | undefined;
+		const close = vi.fn();
+		vi.spyOn(apiClient, "stream").mockImplementation((_snapshot, _state, onExpired) => {
+			expire = onExpired;
+			return { close } as unknown as EventSource;
+		});
+
+		const store = new MonitorStore();
+		await store.restore();
+		expire?.();
+		expect(close).toHaveBeenCalled();
+		expect(store.authenticated.value).toBe(false);
+		expect(store.snapshot.value.hostname).toBe("");
+		expect(store.history.value).toEqual([]);
+	});
 });

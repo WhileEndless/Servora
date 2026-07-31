@@ -9,6 +9,11 @@ Select one or more named destinations while creating an alert rule.
 
 ## Scheduled jobs
 
+`system-maintenance.service` is a `Type=oneshot` unit. Seeing it as
+`inactive (dead)` between runs is expected: the service exits after completing
+maintenance while `system-maintenance.timer` waits for the next invocation.
+The Services screen represents this state as ready/waiting and offers **run now**.
+
 Add an absolute executable path to `JOB_EXECUTABLES`, restart the agent, then
 create a schedule in the UI. Schedules accept systemd `OnCalendar` expressions.
 Generated units are prefixed `system-maintenance-job-`, do not overlap, use a

@@ -4,6 +4,8 @@
 - Passwords are handed to PAM and never stored. Session cookies contain opaque
   random values; only their SHA-256 hashes are persisted.
 - Mutations require an authenticated session, same-origin request and CSRF token.
+- Long-lived SSE telemetry is revalidated without refreshing idle activity;
+  expired or deleted sessions close the stream and clear protected browser state.
 - Five failed logins in 15 minutes trigger a 30-minute IP ban. Repeated bans
   increase exponentially.
 - The direct peer must be inside `ALLOWED_CIDRS`. Forwarded client headers are
