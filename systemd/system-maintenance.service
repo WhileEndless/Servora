@@ -1,0 +1,15 @@
+[Unit]
+Description=System and Docker maintenance
+Documentation=file:/opt/system-maintenance/README.md
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/opt/system-maintenance/bin/system-maintenance
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+TimeoutStartSec=6h
+StandardOutput=journal
+StandardError=journal

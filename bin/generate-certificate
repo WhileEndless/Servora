@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+cert_path="${1:?certificate path required}"
+key_path="${2:?key path required}"
+hosts="${3:-}"
+force="${FORCE:-false}"
+
+if [[ -e "$cert_path" || -e "$key_path" ]]; then
+  if [[ "$force" != "true" ]]; then
+    echo "Certificate or key already exists. Use FORCE=true to replace it." >&2
+    exit 1
+  fi
+fi
+
+if [[ -z "$hosts" ]]; then
+  hosts="$(hostname -f 2>/dev/null || hostname)"
+  while read -r address; do
+    [[ -n "$address" ]] && hosts+=",${address}"
+  done < <(hostname -I 2>/dev/null | tr ' ' '\n')
+fi
+
+san=()
+IFS=',' read -ra candidates <<< "$hosts"
+for candidate in "${candidates[@]}"; do
+  candidate="${candidate//[[:space:]]/}"
+  [[ -z "$candidate" ]] && continue
+  if [[ "$candidate" =~ ^[0-9a-fA-F:.]+$ ]]; then
+    san+=("IP:${candidate}")
+  elif [[ "$candidate" =~ ^[A-Za-z0-9.-]+$ ]]; then
+    san+=("DNS:${candidate}")
+  else
+    echo "Invalid certificate host: ${candidate}" >&2
+    exit 2
+  fi
+done
+if [[ "${#san[@]}" -eq 0 ]]; then
+  echo "At least one valid IP address or DNS name is required." >&2
+  exit 2
+fi
+
+install -d -m 0750 "$(dirname "$cert_path")" "$(dirname "$key_path")"
+tmp_dir="$(mktemp -d)"
+trap 'rm -rf -- "$tmp_dir"' EXIT
+san_csv="$(IFS=,; echo "${san[*]}")"
+openssl req -x509 -newkey rsa:3072 -sha256 -nodes -days 397 \
+  -subj "/CN=${candidates[0]}" -addext "subjectAltName=${san_csv}" \
+  -keyout "$tmp_dir/server.key" -out "$tmp_dir/server.crt"
+install -m 0644 "$tmp_dir/server.crt" "$cert_path"
+install -m 0640 "$tmp_dir/server.key" "$key_path"
+echo "Generated certificate: ${cert_path}"
+echo "Hosts: ${hosts}"

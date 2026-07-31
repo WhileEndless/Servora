@@ -1,0 +1,25 @@
+{
+  "name": "servora-web",
+  "private": true,
+  "version": "0.0.1-beta",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vue-tsc --noEmit && vite build",
+    "test": "vitest run",
+    "lint": "vue-tsc --noEmit"
+  },
+  "dependencies": {
+    "vue": "3.5.18"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.3.3",
+    "@vitejs/plugin-vue": "6.0.1",
+    "@vue/tsconfig": "0.8.1",
+    "tailwindcss": "^4.3.3",
+    "typescript": "5.9.2",
+    "vite": "7.3.6",
+    "vitest": "3.2.7",
+    "vue-tsc": "3.0.6"
+  }
+}

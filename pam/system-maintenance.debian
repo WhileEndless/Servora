@@ -1,0 +1,3 @@
+# Authentication is delegated to the host's standard PAM stack.
+@include common-auth
+@include common-account

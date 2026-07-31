@@ -1,0 +1,36 @@
+[Unit]
+Description=System Maintenance web monitor
+Documentation=file:/opt/system-maintenance/README.md
+After=network-online.target system-maintenance-agent.service
+Requires=system-maintenance-agent.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=system-maintenance
+Group=system-maintenance-agent
+ExecStart=/opt/system-maintenance/bin/system-maintenance-monitor --config /etc/system-maintenance/monitor.conf
+Restart=on-failure
+RestartSec=3s
+UMask=0027
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelLogs=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+ReadWritePaths=/var/lib/system-maintenance-monitor
+ReadOnlyPaths=/etc/system-maintenance
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

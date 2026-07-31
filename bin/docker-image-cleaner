@@ -1,0 +1,109 @@
+#!/usr/bin/env python3
+"""Safely remove old Docker images while retaining the newest image per repository."""
+
+from __future__ import annotations
+
+import argparse
+import datetime as dt
+import json
+import re
+import subprocess
+import sys
+from collections import defaultdict
+
+
+def docker(*args: str, check: bool = True) -> str:
+    result = subprocess.run(
+        ["docker", *args], text=True, capture_output=True, check=False
+    )
+    if check and result.returncode:
+        print(result.stderr.strip(), file=sys.stderr)
+        raise SystemExit(result.returncode)
+    return result.stdout
+
+
+def parse_time(value: str) -> dt.datetime:
+    # Docker may emit nanoseconds while datetime accepts microseconds.
+    value = re.sub(r"(\.\d{6})\d+", r"\1", value)
+    return dt.datetime.fromisoformat(value.replace("Z", "+00:00"))
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--min-age-hours", type=int, default=24)
+    args = parser.parse_args()
+
+    # Protect images referenced by every container, not merely running ones.
+    protected: set[str] = set()
+    container_ids = docker("ps", "-aq").split()
+    if container_ids:
+        raw = docker("inspect", "--format", "{{.Image}}", *container_ids)
+        protected.update(line.strip() for line in raw.splitlines() if line.strip())
+
+    images: dict[str, dict] = {}
+    raw = docker("image", "ls", "--no-trunc", "--format", "{{json .}}")
+    for line in raw.splitlines():
+        row = json.loads(line)
+        image_id = row["ID"]
+        if image_id in images:
+            continue
+        details = json.loads(docker("image", "inspect", image_id))[0]
+        images[image_id] = {
+            "id": image_id,
+            "created": parse_time(details["Created"]),
+            "tags": details.get("RepoTags") or [],
+        }
+
+    by_repo: dict[str, list[dict]] = defaultdict(list)
+    dangling: list[dict] = []
+    for image in images.values():
+        if not image["tags"]:
+            dangling.append(image)
+        for tag in image["tags"]:
+            repo = tag.rsplit(":", 1)[0] if ":" in tag.rsplit("/", 1)[-1] else tag
+            by_repo[repo].append(image)
+
+    # The newest local image ID for every repository is retained.
+    keep: set[str] = set(protected)
+    for candidates in by_repo.values():
+        keep.add(max(candidates, key=lambda item: item["created"])["id"])
+
+    cutoff = dt.datetime.now(dt.timezone.utc) - dt.timedelta(
+        hours=args.min_age_hours
+    )
+    candidates = [
+        image
+        for image in images.values()
+        if image["id"] not in keep and image["created"] < cutoff
+    ]
+    # Dangling images are eligible too, but only after the age threshold.
+    candidates.sort(key=lambda item: item["created"])
+
+    if not candidates:
+        print("Silinebilecek eski ve kullanılmayan Docker imajı bulunamadı.")
+        return 0
+
+    for image in candidates:
+        label = ", ".join(image["tags"]) or "<dangling>"
+        action = "Silinecek" if args.dry_run else "Siliniyor"
+        print(f"{action}: {image['id']} ({label}, {image['created'].isoformat()})")
+        if not args.dry_run:
+            targets = image["tags"] or [image["id"]]
+            result = subprocess.run(
+                ["docker", "image", "rm", *targets],
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            if result.returncode:
+                print(
+                    f"Atlandı (Docker imajı halen gerekli olabilir): "
+                    f"{result.stderr.strip()}",
+                    file=sys.stderr,
+                )
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

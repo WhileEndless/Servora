@@ -1,0 +1,61 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+action="${1:-help}"
+username="${2:-}"
+group_name="${ADMIN_GROUP:-system-maintenance-admin}"
+
+usage() {
+  cat <<'EOF'
+Usage:
+  manage-admin add USERNAME
+  manage-admin remove USERNAME
+  manage-admin list
+EOF
+}
+
+validate_username() {
+  if [[ ! "$username" =~ ^[a-z_][a-z0-9_.-]{0,31}$ ]]; then
+    echo "Invalid Linux username: ${username}" >&2
+    exit 2
+  fi
+  if ! getent passwd "$username" >/dev/null; then
+    echo "Linux user does not exist: ${username}" >&2
+    exit 2
+  fi
+}
+
+case "$action" in
+  add)
+    [[ "${EUID}" -eq 0 ]] || { echo "Adding an administrator requires sudo." >&2; exit 1; }
+    validate_username
+    getent group "$group_name" >/dev/null || groupadd --system "$group_name"
+    usermod -aG "$group_name" "$username"
+    echo "Added ${username} to ${group_name}."
+    echo "The account can now sign in with its Linux password."
+    ;;
+  remove)
+    [[ "${EUID}" -eq 0 ]] || { echo "Removing an administrator requires sudo." >&2; exit 1; }
+    validate_username
+    getent group "$group_name" >/dev/null || { echo "Administrator group does not exist." >&2; exit 2; }
+    gpasswd -d "$username" "$group_name"
+    echo "Removed ${username} from ${group_name}."
+    ;;
+  list)
+    entry="$(getent group "$group_name")" || { echo "Administrator group does not exist." >&2; exit 2; }
+    members="${entry##*:}"
+    echo "Administrator group: ${group_name}"
+    if [[ -z "$members" ]]; then
+      echo "No explicitly assigned users."
+    else
+      tr ',' '\n' <<< "$members"
+    fi
+    ;;
+  help|--help|-h)
+    usage
+    ;;
+  *)
+    usage >&2
+    exit 2
+    ;;
+esac

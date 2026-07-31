@@ -1,0 +1,114 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+CONFIG_FILE="${MAINTENANCE_CONFIG:-/etc/system-maintenance.conf}"
+CLI_DRY_RUN=false
+case "${1:-}" in
+  --dry-run) CLI_DRY_RUN=true ;;
+  --help)
+    echo "Kullanım: $0 [--dry-run]"
+    exit 0
+    ;;
+  "")
+    ;;
+  *)
+    echo "Bilinmeyen seçenek: $1" >&2
+    exit 2
+    ;;
+esac
+
+DRY_RUN="${DRY_RUN:-false}"
+UPDATE_PACKAGES="${UPDATE_PACKAGES:-true}"
+UPDATE_DOCKER_IMAGES="${UPDATE_DOCKER_IMAGES:-true}"
+PRUNE_DOCKER_IMAGES="${PRUNE_DOCKER_IMAGES:-true}"
+PRUNE_DOCKER_BUILD_CACHE="${PRUNE_DOCKER_BUILD_CACHE:-true}"
+JOURNAL_RETENTION="${JOURNAL_RETENTION:-14d}"
+JOURNAL_MAX_SIZE="${JOURNAL_MAX_SIZE:-500M}"
+DOCKER_IMAGE_MIN_AGE_HOURS="${DOCKER_IMAGE_MIN_AGE_HOURS:-24}"
+DOCKER_BUILD_CACHE_MIN_AGE_HOURS="${DOCKER_BUILD_CACHE_MIN_AGE_HOURS:-168}"
+
+if [[ -r "$CONFIG_FILE" ]]; then
+  # shellcheck disable=SC1090
+  source "$CONFIG_FILE"
+fi
+if [[ "$CLI_DRY_RUN" == "true" ]]; then
+  DRY_RUN=true
+fi
+
+log() { printf '%s [system-maintenance] %s\n' "$(date --iso-8601=seconds)" "$*"; }
+run() {
+  if [[ "$DRY_RUN" == "true" ]]; then
+    printf 'DRY-RUN:'
+    printf ' %q' "$@"
+    printf '\n'
+  else
+    "$@"
+  fi
+}
+
+if [[ "${EUID}" -ne 0 ]]; then
+  log "HATA: root olarak çalıştırılmalı."
+  exit 1
+fi
+
+export DEBIAN_FRONTEND=noninteractive
+export NEEDRESTART_MODE=a
+
+if [[ "$UPDATE_PACKAGES" == "true" ]]; then
+  if command -v apt-get >/dev/null 2>&1; then
+    log "APT paket listesi ve sistem paketleri güncelleniyor."
+    run apt-get update
+    run apt-get -y -o Dpkg::Options::=--force-confold dist-upgrade
+    run apt-get -y autoremove --purge
+    run apt-get clean
+  else
+    log "UYARI: apt-get bulunamadı; paket güncellemesi atlandı."
+  fi
+fi
+
+log "systemd geçici dosya kuralları uygulanıyor."
+run systemd-tmpfiles --clean
+
+if command -v journalctl >/dev/null 2>&1; then
+  log "Journal günlükleri sınırlandırılıyor (${JOURNAL_RETENTION}, ${JOURNAL_MAX_SIZE})."
+  run journalctl --rotate
+  run journalctl --vacuum-time="$JOURNAL_RETENTION"
+  run journalctl --vacuum-size="$JOURNAL_MAX_SIZE"
+  journalctl -p warning --since "12 hours ago" --no-pager -n 200 || true
+fi
+
+if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
+  if [[ "$UPDATE_DOCKER_IMAGES" == "true" ]]; then
+    log "Container'larda kullanılan, sürüm etiketi olan Docker imajları kontrol ediliyor."
+    mapfile -t image_refs < <(
+      docker ps --format '{{.Image}}' |
+        awk 'NF && $0 !~ /^sha256:/ && $0 !~ /@sha256:/ {print}' |
+        sort -u
+    )
+    for image_ref in "${image_refs[@]}"; do
+      log "Docker imajı kontrol ediliyor: ${image_ref}"
+      run docker pull "$image_ref"
+    done
+  fi
+
+  if [[ "$PRUNE_DOCKER_IMAGES" == "true" ]]; then
+    log "Eski ve hiçbir container tarafından kullanılmayan Docker imajları seçiliyor."
+    script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+    if [[ "$DRY_RUN" == "true" ]]; then
+      "$script_dir/docker-image-cleaner" --dry-run --min-age-hours "$DOCKER_IMAGE_MIN_AGE_HOURS"
+    else
+      "$script_dir/docker-image-cleaner" --min-age-hours "$DOCKER_IMAGE_MIN_AGE_HOURS"
+    fi
+  fi
+
+  if [[ "$PRUNE_DOCKER_BUILD_CACHE" == "true" ]]; then
+    log "Eski Docker build cache temizleniyor."
+    run docker builder prune -f --filter "until=${DOCKER_BUILD_CACHE_MIN_AGE_HOURS}h"
+  fi
+else
+  log "Docker çalışmıyor veya erişilemiyor; Docker bakımı atlandı."
+fi
+
+log "Disk kullanımı:"
+df -h -x tmpfs -x devtmpfs
+log "Bakım tamamlandı."

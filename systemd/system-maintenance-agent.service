@@ -1,0 +1,28 @@
+[Unit]
+Description=System Maintenance privileged monitoring agent
+Documentation=file:/opt/system-maintenance/README.md
+After=local-fs.target
+Before=system-maintenance-monitor.service
+
+[Service]
+Type=simple
+Group=system-maintenance-agent
+ExecStart=/opt/system-maintenance/bin/system-maintenance-agent --config /etc/system-maintenance/monitor.conf
+Restart=on-failure
+RestartSec=3s
+RuntimeDirectory=system-maintenance
+RuntimeDirectoryMode=0750
+UMask=0007
+PrivateTmp=true
+ProtectHome=true
+ProtectKernelLogs=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictRealtime=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target
