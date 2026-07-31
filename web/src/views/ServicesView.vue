@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
 import { monitorStore } from "@/services/MonitorStore";
+import { useI18n } from "@/composables/useI18n";
 import { apiClient } from "@/services/ApiClient";
 import type { ServiceInfo } from "@/types";
 import ConfirmDialog from "@/components/common/ConfirmDialog.vue";
 
 const message = ref("");
+const { l } = useI18n();
 const pending = ref<{ item: ServiceInfo; verb: string } | null>(null);
 const services = computed(() => {
   const query = monitorStore.search.value.toLowerCase();
@@ -31,5 +33,5 @@ async function confirmAction(): Promise<void> {
 </script>
 
 <template>
-  <section class="page active"><div class="toolbar"><span class="summary">{{ services.length }} services</span><span class="success">{{ message }}</span></div><article class="panel"><div class="table-wrap tall"><table><thead><tr><th>UNIT</th><th>STATE</th><th>SUB</th><th>RUNNING</th><th>PID</th><th>RESTARTS</th><th>DESCRIPTION</th><th>ACTIONS</th></tr></thead><tbody><tr v-for="item in services" :key="item.Name"><td>{{ item.Name }}</td><td><span class="status" :class="item.Active === 'active' ? 'ok' : 'warn'">{{ item.Active }}</span></td><td>{{ item.Sub }}</td><td :title="item.ActiveSince">{{ item.Duration || "—" }}</td><td>{{ item.PID || "—" }}</td><td>{{ item.Restarts }}</td><td>{{ item.Description }}</td><td class="actions"><template v-if="item.Manageable && !item.Protected"><button v-for="verb in ['start','restart','stop']" :key="verb" class="tiny" @click="control(item, verb)">{{ verb }}</button></template><span v-else class="badge">{{ item.Protected ? "PROTECTED" : "READ ONLY" }}</span></td></tr></tbody></table></div></article><ConfirmDialog v-if="pending" :title="`${pending.verb} service?`" :message="`${pending.item.Name} will be ${pending.verb === 'stop' ? 'stopped' : 'restarted'}. This action is audited.`" :confirm-label="pending.verb" :dangerous="pending.verb === 'stop'" @cancel="pending = null" @confirm="confirmAction" /></section>
+  <section class="page active"><div class="toolbar"><span class="summary">{{ services.length }} {{ l("services", "servis") }}</span><span class="success">{{ message }}</span></div><article class="panel"><div class="table-wrap tall"><table><thead><tr><th>{{ l("UNIT", "BİRİM") }}</th><th>{{ l("STATE", "DURUM") }}</th><th>SUB</th><th>{{ l("RUNNING", "ÇALIŞMA") }}</th><th>PID</th><th>{{ l("RESTARTS", "YENİDEN BAŞLATMA") }}</th><th>{{ l("DESCRIPTION", "AÇIKLAMA") }}</th><th>{{ l("ACTIONS", "İŞLEMLER") }}</th></tr></thead><tbody><tr v-for="item in services" :key="item.Name"><td>{{ item.Name }}</td><td><span class="status" :class="item.Active === 'active' ? 'ok' : 'warn'">{{ item.Active }}</span></td><td>{{ item.Sub }}</td><td :title="item.ActiveSince">{{ item.Duration || "—" }}</td><td>{{ item.PID || "—" }}</td><td>{{ item.Restarts }}</td><td>{{ item.Description }}</td><td class="actions"><template v-if="item.Manageable && !item.Protected"><button v-for="verb in ['start','restart','stop']" :key="verb" class="tiny" @click="control(item, verb)">{{ verb === 'start' ? l('start', 'başlat') : verb === 'restart' ? l('restart', 'yeniden başlat') : l('stop', 'durdur') }}</button></template><span v-else class="badge">{{ item.Protected ? l("PROTECTED", "KORUMALI") : l("READ ONLY", "SALT OKUNUR") }}</span></td></tr></tbody></table></div></article><ConfirmDialog v-if="pending" :title="l('{verb} service?', '{verb} servisi?', { verb: pending.verb })" :message="l('{name} will be changed. This action is audited.', '{name} servisi değiştirilecek. Bu işlem denetlenir.', { name: pending.item.Name })" :confirm-label="pending.verb" :dangerous="pending.verb === 'stop'" @cancel="pending = null" @confirm="confirmAction" /></section>
 </template>

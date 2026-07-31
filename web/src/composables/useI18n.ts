@@ -1,4 +1,4 @@
-import { computed, ref } from "vue";
+import { computed, ref, watch } from "vue";
 
 const messages = {
   en: {
@@ -27,6 +27,14 @@ export type MessageKey = keyof typeof messages.en;
 const saved = localStorage.getItem("sms.locale");
 const initial: Locale = saved === "tr" || (!saved && navigator.language.startsWith("tr")) ? "tr" : "en";
 const locale = ref<Locale>(initial);
+document.documentElement.lang = initial;
+
+export type TranslationValues = Record<string, string | number>;
+
+function interpolate(message: string, values?: TranslationValues): string {
+  if (!values) return message;
+  return message.replace(/\{(\w+)\}/g, (match, key: string) => String(values[key] ?? match));
+}
 
 export function useI18n() {
   const setLocale = (value: Locale): void => {
@@ -35,5 +43,9 @@ export function useI18n() {
     document.documentElement.lang = value;
   };
   const t = (key: MessageKey): string => messages[locale.value][key];
-  return { locale, setLocale, t, messages: computed(() => messages[locale.value]) };
+  const l = (english: string, turkish: string, values?: TranslationValues): string =>
+    interpolate(locale.value === "tr" ? turkish : english, values);
+  return { locale, setLocale, t, l, messages: computed(() => messages[locale.value]) };
 }
+
+watch(locale, (value) => { document.documentElement.lang = value; });

@@ -48,7 +48,7 @@ kullanılır.
 
 ## Gereksinimler ve kurulum
 
-Linux, systemd, PAM, Go 1.26+, C derleyicisi, PAM/SQLite geliştirme başlıkları,
+Linux, systemd, PAM, Go 1.26.5+, C derleyicisi, PAM/SQLite geliştirme başlıkları,
 Node.js 22+, npm ve OpenSSL gerekir. Docker isteğe bağlıdır.
 
 Debian/Ubuntu:

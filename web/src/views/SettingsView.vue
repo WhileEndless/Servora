@@ -111,7 +111,7 @@ onMounted(load);
           <div class="retention-control"><input v-model.number="retention" type="number" min="1" max="365"><span>days</span><button class="primary" @click="saveRetention">Save</button></div>
         </div>
         <div class="setting-row danger-setting">
-          <div><b>Clear network history</b><p>Permanently removes process, group, destination and timeline records. This action is audited.</p></div>
+          <div><b>Clear network history</b><p>Permanently removes stored traffic and starts a fresh live eBPF accounting epoch, including integrity counters. This action is audited.</p></div>
           <button class="danger-outline" @click="clearModal = true">Clear stored history</button>
         </div>
       </article>

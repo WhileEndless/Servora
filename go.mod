@@ -2,6 +2,8 @@ module github.com/WhileEndless/Servora
 
 go 1.26
 
+toolchain go1.26.5
+
 require (
 	github.com/cilium/ebpf v0.22.0
 	github.com/mattn/go-sqlite3 v1.14.32

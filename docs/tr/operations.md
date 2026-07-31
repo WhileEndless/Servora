@@ -71,6 +71,8 @@ make upgrade
 Varsayılan saklama süresi on gündür; **Ayarlar → Ağ geçmişi** bölümünden
 değiştirilebilir. Kapasite kaynaklı tek bir bayt bile kaybolursa arayüz bunu veri
 bütünlüğü hatası olarak gösterir.
+Ağ geçmişini temizleme işlemi canlı eBPF akış map'lerini ve kayıp bayt bütünlük
+sayacını da sıfırlar; sonraki örnek yeni bir hesaplama dönemi başlatır.
 
 ## CPU, bellek ve disk I/O geçmişi
 

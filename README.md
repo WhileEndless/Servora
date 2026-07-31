@@ -49,7 +49,7 @@ resource analysis views.
 ## Requirements
 
 - Linux with systemd and PAM
-- Go 1.26+, a C compiler, PAM and SQLite development headers
+- Go 1.26.5+, a C compiler, PAM and SQLite development headers
 - Node.js 22+ and npm for frontend builds
 - OpenSSL for first-run certificate generation
 - Kernel BTF/eBPF support for exact network accounting

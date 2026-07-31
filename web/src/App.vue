@@ -16,9 +16,11 @@ import ActivityView from "@/views/ActivityView.vue";
 import SettingsView from "@/views/SettingsView.vue";
 import { monitorStore } from "@/services/MonitorStore";
 import type { PageName } from "@/types";
+import { useI18n } from "@/composables/useI18n";
 
 const restoring = ref(true);
 const mobileMenuOpen = ref(false);
+const { l } = useI18n();
 const viewMap = {
   overview: OverviewView, processes: ProcessesView, services: ServicesView,
   docker: DockerView, network: NetworkView, ssh: SshView,
@@ -55,7 +57,7 @@ function navigate(page: PageName): void {
 </script>
 
 <template>
-  <div v-if="restoring" class="boot-screen"><span class="spinner" />Loading monitor…</div>
+  <div v-if="restoring" class="boot-screen"><span class="spinner" />{{ l("Loading monitor…", "İzleme ekranı yükleniyor…") }}</div>
   <LoginView v-else-if="!monitorStore.authenticated.value" />
   <div v-else class="app-shell">
     <AppSidebar :page="monitorStore.page.value" :open="mobileMenuOpen" @navigate="navigate" @close="mobileMenuOpen = false" />

@@ -8,6 +8,7 @@ import (
 	"net"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/cilium/ebpf"
@@ -37,8 +38,10 @@ type bpfAccountingStats struct {
 }
 
 type bpfNetworkTracker struct {
+	mu         sync.Mutex
 	collection *ebpf.Collection
 	flows      *ebpf.Map
+	calls      *ebpf.Map
 	stats      *ebpf.Map
 	links      []link.Link
 }
@@ -61,9 +64,10 @@ func newBPFNetworkTracker(objectPath string) (*bpfNetworkTracker, error) {
 	tracker := &bpfNetworkTracker{
 		collection: collection,
 		flows:      collection.Maps["flows"],
+		calls:      collection.Maps["calls"],
 		stats:      collection.Maps["accounting_stats"],
 	}
-	if tracker.flows == nil || tracker.stats == nil {
+	if tracker.flows == nil || tracker.calls == nil || tracker.stats == nil {
 		collection.Close()
 		return nil, errors.New("eBPF accounting maps are missing")
 	}
@@ -108,6 +112,8 @@ func (tracker *bpfNetworkTracker) Close() {
 }
 
 func (tracker *bpfNetworkTracker) DroppedBytes() uint64 {
+	tracker.mu.Lock()
+	defer tracker.mu.Unlock()
 	var perCPU []bpfAccountingStats
 	if err := tracker.stats.Lookup(uint32(0), &perCPU); err != nil {
 		return 0
@@ -119,7 +125,44 @@ func (tracker *bpfNetworkTracker) DroppedBytes() uint64 {
 	return total
 }
 
+// Reset clears the integrity counter together with pending and completed flow
+// maps. It is called by the authenticated history-clear operation so a new
+// accounting epoch cannot inherit kernel-side totals from the previous one.
+func (tracker *bpfNetworkTracker) Reset() error {
+	tracker.mu.Lock()
+	defer tracker.mu.Unlock()
+	if err := clearBPFMap(tracker.flows); err != nil {
+		return fmt.Errorf("clear flow map: %w", err)
+	}
+	if err := clearBPFMap(tracker.calls); err != nil {
+		return fmt.Errorf("clear pending-call map: %w", err)
+	}
+	possibleCPUs, err := ebpf.PossibleCPU()
+	if err != nil {
+		return fmt.Errorf("read possible CPUs: %w", err)
+	}
+	zero := make([]bpfAccountingStats, possibleCPUs)
+	if err := tracker.stats.Update(uint32(0), zero, ebpf.UpdateAny); err != nil {
+		return fmt.Errorf("clear accounting statistics: %w", err)
+	}
+	return nil
+}
+
+func clearBPFMap(target *ebpf.Map) error {
+	iterator := target.Iterate()
+	key := make([]byte, target.KeySize())
+	value := make([]byte, target.ValueSize())
+	for iterator.Next(&key, &value) {
+		if err := target.Delete(key); err != nil && !errors.Is(err, ebpf.ErrKeyNotExist) {
+			return err
+		}
+	}
+	return iterator.Err()
+}
+
 func (tracker *bpfNetworkTracker) Drain(processes []model.Process) []model.NetworkFlow {
+	tracker.mu.Lock()
+	defer tracker.mu.Unlock()
 	processByPID := make(map[int]model.Process, len(processes))
 	for _, process := range processes {
 		processByPID[process.PID] = process
