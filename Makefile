@@ -3,6 +3,8 @@ VERSION := $(shell tr -d '[:space:]' < VERSION)
 PREFIX ?= /opt/system-maintenance
 CONFIG_DIR ?= /etc/system-maintenance
 HOSTS ?=
+LISTEN ?=
+ALLOWED_CIDRS ?=
 CERT ?=
 KEY ?=
 ADMIN_USER ?= $(shell id -un)
@@ -13,7 +15,7 @@ BPFTOOL ?= bpftool
 BPF_ARCH ?= x86
 BPF_OBJECT := build/network_accounting.bpf.o
 
-.PHONY: all help frontend frontend-deps bpf build test install setup upgrade uninstall purge start stop restart status logs cert-generate cert-install admin-add admin-remove admin-list clean
+.PHONY: all help deps-check frontend frontend-deps bpf build test test-install install setup upgrade uninstall purge start stop restart status logs cert-generate cert-install admin-add admin-remove admin-list clean
 
 all: build
 
@@ -21,20 +23,27 @@ help:
 	@echo "Servora v$(VERSION)"
 	@echo
 	@echo "Build:          make build | make test | make frontend-deps"
-	@echo "Exact network:  make bpf  (requires clang, llvm, libbpf-dev, bpftool)"
-	@echo "First setup:    make setup HOSTS=\"192.168.2.10,monitor.local\""
+	@echo "Check tooling:  make deps-check"
+	@echo "First setup:    make setup"
 	@echo "Install only:   make install"
 	@echo "Upgrade:        make upgrade"
+	@echo
+	@echo "Install prompts for the listener, the allowed networks and the"
+	@echo "certificate hosts. Answer non-interactively by passing them in:"
+	@echo "  make install LISTEN=0.0.0.0:9443 ALLOWED_CIDRS=203.0.113.0/24"
 	@echo
 	@echo "Authorize current Linux user: make admin-add"
 	@echo "Authorize another user:       make admin-add ADMIN_USER=username"
 	@echo "Remove an administrator:      make admin-remove ADMIN_USER=username"
 	@echo "List administrators:          make admin-list"
 	@echo
-	@echo "Generate TLS:    make cert-generate HOSTS=\"IP,DNS\""
+	@echo "Generate TLS:    make cert-generate HOSTS=\"203.0.113.10,monitor.example.lan\""
 	@echo "Install TLS:     make cert-install CERT=/path/fullchain.pem KEY=/path/privkey.pem"
 	@echo "Lifecycle:       make start | stop | restart | status | logs"
 	@echo "Removal:         make uninstall | make purge"
+
+deps-check:
+	@./scripts/deps-check.sh
 
 frontend:
 	cd web && test -x node_modules/.bin/vite || npm ci
@@ -57,21 +66,28 @@ $(BPF_OBJECT): internal/agent/bpf/network_accounting.c build/vmlinux.h
 
 bpf: $(BPF_OBJECT)
 
-build: frontend bpf
+build: deps-check frontend bpf
 	mkdir -p build
 	GOCACHE=$(GO_CACHE) CGO_ENABLED=1 go build -buildvcs=false -trimpath -ldflags "$(LDFLAGS)" -o build/system-maintenance-monitor ./cmd/system-maintenance-monitor
 	GOCACHE=$(GO_CACHE) CGO_ENABLED=1 go build -buildvcs=false -trimpath -ldflags "$(LDFLAGS)" -o build/system-maintenance-agent ./cmd/system-maintenance-agent
 
-test:
+test: test-install
 	GOCACHE=$(GO_CACHE) go test ./...
 	cd web && npm run lint
 	cd web && npm test
 	cd web && npm run build
 
-install: build
-	sudo ./install.sh
+test-install:
+	@./scripts/test-install.sh
 
-setup: install cert-generate
+# The installer prompts for the listener, allowed networks and certificate
+# hosts. Passing them here answers the prompts without a terminal.
+install: build
+	sudo LISTEN="$(LISTEN)" ALLOWED_CIDRS="$(ALLOWED_CIDRS)" HOSTS="$(HOSTS)" ./install.sh
+
+# install now generates the certificate when none exists, so setup only has to
+# enable the units.
+setup: install
 	sudo systemctl enable --now system-maintenance-agent.service system-maintenance-monitor.service system-maintenance.timer
 
 upgrade: install

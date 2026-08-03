@@ -43,6 +43,7 @@ type Config struct {
 func DefaultConfig() Config {
 	return Config{
 		Listen:                         "0.0.0.0:8443",
+		AllowedCIDRs:                   loopbackCIDRs(),
 		TLSCert:                        "/etc/system-maintenance/tls/server.crt",
 		TLSKey:                         "/etc/system-maintenance/tls/server.key",
 		DataDir:                        "/var/lib/system-maintenance-monitor",
@@ -80,10 +81,22 @@ func DefaultConfig() Config {
 	}
 }
 
+// loopbackCIDRs is the fail-closed default for ALLOWED_CIDRS. A config that
+// omits the key grants local access only, rather than exposing the service to
+// a network the operator never named. The installer always writes the key.
+func loopbackCIDRs() []*net.IPNet {
+	var out []*net.IPNet
+	for _, item := range []string{"127.0.0.1/32", "::1/128"} {
+		if _, network, err := net.ParseCIDR(item); err == nil {
+			out = append(out, network)
+		}
+	}
+	return out
+}
+
 func LoadConfig(path string) (Config, error) {
 	cfg := DefaultConfig()
-	_, cidr, _ := net.ParseCIDR("192.168.2.0/24")
-	cfg.AllowedCIDRs = []*net.IPNet{cidr}
+	cfg.AllowedCIDRs = loopbackCIDRs()
 	f, err := os.Open(path)
 	if os.IsNotExist(err) {
 		return cfg, nil

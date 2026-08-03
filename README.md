@@ -70,7 +70,7 @@ No installation command is run automatically by the repository.
 make test
 make build
 make install
-make cert-generate HOSTS="192.168.2.10,monitor.example.lan"
+make cert-generate HOSTS="203.0.113.10,monitor.example.lan"
 make start
 ```
 
@@ -107,8 +107,10 @@ make cert-install CERT=/path/fullchain.pem KEY=/path/privkey.pem
 ## Configuration
 
 The installed monitor configuration is
-`/etc/system-maintenance/monitor.conf`. The default application access network
-is `192.168.2.0/24`, plus loopback. Review these settings before exposing it:
+`/etc/system-maintenance/monitor.conf`. `make install` writes the listener and
+the access networks you confirm; without an answer it grants loopback only, so
+the service is never exposed to a network you did not name. Review these
+settings before exposing it:
 
 - `ALLOWED_CIDRS`
 - `SERVICE_ALLOWLIST`

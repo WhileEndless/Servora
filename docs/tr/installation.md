@@ -16,32 +16,58 @@ sudo apt-get install -y golang-go gcc clang llvm libbpf-dev bpftool \
 `github.com/cilium/ebpf` dahil Go bağımlılıkları `go.mod`/`go.sum` içinde
 sabitlenmiştir ve derleme sırasında Go araçları tarafından indirilir.
 
+Derlemeden önce araç zincirini doğrulayın. `make deps-check` eksik komut ve
+geliştirme başlıklarının tamamını tek seferde, kurulum komutuyla birlikte
+bildirir:
+
 ```bash
+make deps-check
 make help
 make test
-make bpf
 ```
 
 ## 2. Kurun ve başlatın
 
-Tarayıcıda kullanılacak tüm IP/DNS adlarını sertifikaya ekleyin:
-
 ```bash
-make setup HOSTS="192.168.2.10,monitor.example.lan"
+make setup
 ```
 
 Bu akış Vue ve Go kodunu derler; servis kullanıcı/gruplarını, PAM/systemd
 dosyalarını kurar; self-signed sertifika üretir ve servisleri etkinleştirir.
 `sudo` çağıran kullanıcı otomatik yetkilendirilir.
 
+Kurulum, sistemde hiçbir değişiklik yapmadan önce makineden makineye değişen üç
+ayarı sorar. Köşeli parantez içindeki değeri kabul etmek için Enter'a basın:
+
+- **Dinlenecek adres:port** — varsayılan `0.0.0.0:8443`. Portu başka bir servis
+  tutuyorsa kurulum o süreci adıyla bildirir ve bir sonraki boş portu önerir;
+  başlayamayacak bir servis bırakmaz. Portu zaten çalışan Servora monitörü
+  tutuyorsa bu bir çakışma sayılmaz.
+- **Erişime izinli ağlar** — `ALLOWED_CIDRS`. Varsayılan, bu makinenin kendi
+  arayüzlerinden türetilir; container ve sanal köprüler hariç tutulur, loopback
+  her zaman eklenir.
+- **Sertifika adresleri** — tarayıcıda kullanılacak tüm IP/DNS adları. Yalnızca
+  henüz sertifika yoksa sorulur.
+
+Terminal olmadan cevaplamak için değerleri doğrudan geçin. Böyle verilen ayar
+sorulmaz; CI ve `curl | sudo bash` kurulumları bu yolu kullanır:
+
+```bash
+make install LISTEN=0.0.0.0:9443 ALLOWED_CIDRS=203.0.113.0/24 \
+  HOSTS="203.0.113.10,monitor.example.lan"
+```
+
 Aşamalı kurulum:
 
 ```bash
 make build
 make install
-make cert-generate HOSTS="192.168.2.10,monitor.example.lan"
 make start
 ```
+
+`make install` tekrar çalıştırılabilir. Mevcut cevaplar varsayılan olarak geri
+gelir ve `monitor.conf` içinde yalnızca değiştirdiğiniz anahtarlar yeniden
+yazılır; yorumlar ve elle yaptığınız düzenlemeler korunur, `.bak` yedeği alınır.
 
 ## 3. Linux kullanıcılarını yetkilendirin
 

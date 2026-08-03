@@ -16,18 +16,19 @@ sudo apt-get install -y golang-go gcc clang llvm libbpf-dev bpftool \
 Go module dependencies, including `github.com/cilium/ebpf`, are pinned in
 `go.mod`/`go.sum` and downloaded by the Go toolchain during the build.
 
+Verify the toolchain before building. `make deps-check` reports every missing
+command and development header at once, with the command that installs them:
+
 ```bash
+make deps-check
 make help
 make test
-make bpf
 ```
 
 ## 2. Install and start
 
-Use every IP address or DNS name clients will enter in the browser:
-
 ```bash
-make setup HOSTS="192.168.2.10,monitor.example.lan"
+make setup
 ```
 
 This builds the Vue application and Go binaries, creates the service accounts
@@ -35,14 +36,37 @@ and groups, installs the PAM/systemd definitions, generates a self-signed
 certificate and enables the services. The user invoking `sudo` is authorized
 automatically.
 
+Before changing anything, the installer asks for the three settings that differ
+between machines. Press Enter to accept the value in brackets:
+
+- **Listener** — address and port, `0.0.0.0:8443` by default. If another
+  service already holds the port, the installer names that process and offers
+  the next free port rather than leaving a service that cannot start. A port
+  held by an already-running Servora monitor is not a conflict.
+- **Allowed networks** — `ALLOWED_CIDRS`. The default is taken from this host's
+  own interfaces, ignoring container and virtual bridges, plus loopback.
+- **Certificate hosts** — every IP address or DNS name clients will enter in
+  the browser. Asked only when no certificate exists yet.
+
+Answer without a terminal by passing the values in. Any setting given this way
+is not prompted for, which is what CI and `curl | sudo bash` installs use:
+
+```bash
+make install LISTEN=0.0.0.0:9443 ALLOWED_CIDRS=203.0.113.0/24 \
+  HOSTS="203.0.113.10,monitor.example.lan"
+```
+
 For a staged installation:
 
 ```bash
 make build
 make install
-make cert-generate HOSTS="192.168.2.10,monitor.example.lan"
 make start
 ```
+
+Re-running `make install` is safe. Existing answers come back as the defaults,
+and only the keys you change are rewritten in `monitor.conf` — comments and
+hand edits survive, and a `.bak` copy is kept.
 
 ## 3. Authorize Linux users
 

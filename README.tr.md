@@ -62,7 +62,7 @@ sudo apt-get install golang-go gcc clang llvm libbpf-dev bpftool \
 make test
 make build
 make install
-make cert-generate HOSTS="192.168.2.10,monitor.example.lan"
+make cert-generate HOSTS="203.0.113.10,monitor.example.lan"
 make start
 ```
 
@@ -92,8 +92,10 @@ make cert-install CERT=/path/fullchain.pem KEY=/path/privkey.pem
 ```
 
 Kurulu ayarlar `/etc/system-maintenance/monitor.conf`, geçmiş veriler
-`/var/lib/system-maintenance-monitor` altındadır. Varsayılan erişim ağı
-`192.168.2.0/24`, veri kotası 2 GiB, ham saklama 30 gün ve özet saklama bir yıldır.
+`/var/lib/system-maintenance-monitor` altındadır. Erişim ağını `make install`
+sırasında onayladığınız değer belirler; cevap verilmezse yalnızca loopback
+açılır, yani servis adını koymadığınız bir ağa hiçbir zaman açılmaz. Veri kotası
+2 GiB, ham saklama 30 gün ve özet saklama bir yıldır.
 
 Hızlı sistem metrikleri varsayılan olarak saniyede bir akar. Bağlantı sahipliği,
 Docker ve işletim sistemi envanterleri ayrı arka plan aralıklarında yenilendiği

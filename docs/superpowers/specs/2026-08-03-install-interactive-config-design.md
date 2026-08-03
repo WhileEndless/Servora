@@ -80,12 +80,19 @@ variable.
 
 The installed monitor holds the configured port whenever the service is
 running, so a naive "is this port free" test would report a conflict on every
-upgrade. Detection therefore identifies the holder before deciding:
+upgrade. Detection therefore identifies the holder before deciding. Whether a socket
+exists and who owns it are established separately, because ownership requires
+privilege and the socket's existence does not:
 
-1. Look up the listener owner for the chosen port.
-2. If the owning process belongs to the monitor's own systemd unit, there is no
-   conflict — continue silently.
-3. Otherwise there is a real conflict:
+1. Determine whether anything listens on the chosen port.
+2. Look up the listener's owning process.
+3. If the owner belongs to the monitor's own systemd unit, there is no conflict
+   — continue silently.
+4. A listening socket whose owner cannot be identified counts as a conflict.
+   The socket is real regardless of whether we are permitted to see who opened
+   it, so treating it as free would recreate the failure this change exists to
+   prevent.
+5. Otherwise there is a real conflict:
    - **Interactive:** report the owning process by name and PID, offer the
      first free port above the chosen one, and ask whether to use it.
    - **Non-interactive:** abort, naming the process that holds the port and the
@@ -187,5 +194,9 @@ into `make test`. The Go default change is covered by the existing
   config always sets the key explicitly, so this affects only hand-built
   configs. It is called out in the release notes.
 - **Listener ownership lookup requires privilege.** `install.sh` already runs as
-  root, so the owning PID is visible. If lookup fails for any reason, detection
-  degrades to a warning rather than a false abort.
+  root, so the owning PID is visible. Where it is not, the installer reports the
+  port as held by an unidentified process rather than assuming it is free.
+
+- **Prompt loops must be bounded.** A validator that can never be satisfied, or
+  a terminal that returns EOF on every read, would otherwise spin forever. The
+  prompt gives up after a fixed number of attempts and fails the install.

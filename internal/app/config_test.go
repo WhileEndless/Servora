@@ -34,6 +34,35 @@ func TestLoadConfig(t *testing.T) {
 	}
 }
 
+// A config that never names a network must not grant one. The installer always
+// writes ALLOWED_CIDRS; anything else is a hand-built config that should reach
+// only the local machine.
+func TestAllowedCIDRsDefaultToLoopback(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "monitor.conf")
+	if err := os.WriteFile(path, []byte("LISTEN=127.0.0.1:9443\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	for name, cfg := range map[string]Config{"default": DefaultConfig(), "loaded": mustLoad(t, path)} {
+		if !containsIP(cfg.AllowedCIDRs, net.ParseIP("127.0.0.1")) {
+			t.Fatalf("%s: loopback was not accepted", name)
+		}
+		for _, remote := range []string{"10.20.30.40", "192.0.2.7", "203.0.113.9"} {
+			if containsIP(cfg.AllowedCIDRs, net.ParseIP(remote)) {
+				t.Fatalf("%s: unnamed network %s was accepted", name, remote)
+			}
+		}
+	}
+}
+
+func mustLoad(t *testing.T, path string) Config {
+	t.Helper()
+	cfg, err := LoadConfig(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return cfg
+}
+
 func TestAlertRuleValidation(t *testing.T) {
 	valid := store.AlertRule{Name: "RAM", Source: "memory", Operator: ">=", Threshold: 90}
 	if !validAlertRule(valid) {
